@@ -636,7 +636,7 @@ def auto_run():
             log.error(f"에러: {e}"); log.info("120초 후 재시도..."); time.sleep(120)
 
 if __name__ == '__main__':
-    cmd = sys.argv[1] if len(sys.argv) > 1 else 'signal'
+    cmd = sys.argv[1] if len(sys.argv) > 1 else 'auto'
     cmds = {
         'signal': signal_only, 'rebal': rebalance, 'status': status,
         'close': close_all, 'auto': auto_run
