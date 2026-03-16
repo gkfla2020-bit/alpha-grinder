@@ -29,8 +29,8 @@ from dotenv import load_dotenv
 
 DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(DIR, '.env'))
-TG_TOKEN = os.getenv('TG_BOT_TOKEN', '')
-TG_CHAT = os.getenv('TG_CHAT_ID', '')
+TG_TOKEN = os.getenv('TG_BOT_TOKEN', '8793543603:AAFgjJ5GfO93as3ssmcFEL9tiZhmSIYXBgE')
+TG_CHAT = os.getenv('TG_CHAT_ID', '8451071451')
 SAVE_PATH = os.path.join(DIR, 'grinder_results.json')
 
 SYMBOLS = {

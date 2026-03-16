@@ -63,6 +63,19 @@ STRATEGY_WEIGHTS = {
 
 STATE_FILE = os.path.join(os.path.dirname(__file__), 'bot_v5_state.json')
 
+# ── 텔레그램 ──
+TG_TOKEN = os.getenv('TG_BOT_TOKEN', '8793543603:AAFgjJ5GfO93as3ssmcFEL9tiZhmSIYXBgE')
+TG_CHAT = os.getenv('TG_CHAT_ID', '8451071451')
+
+def tg(msg):
+    if not TG_TOKEN or not TG_CHAT: return
+    try:
+        for i in range(0, len(msg), 4000):
+            requests.post(f'https://api.telegram.org/bot{TG_TOKEN}/sendMessage',
+                json={'chat_id': TG_CHAT, 'text': msg[i:i+4000], 'parse_mode': 'HTML'},
+                timeout=10)
+    except: pass
+
 log = logging.getLogger('bot_v5')
 log.setLevel(logging.INFO)
 _fmt = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
@@ -421,14 +434,21 @@ def calc_signal():
 #  리밸런싱 (v5: 풀 시드 + 넷 = 0)
 # ═══════════════════════════════════════
 def rebalance():
+    tg("🔄 <b>[봇 v5] 리밸런싱 시작</b>\n"
+       f"⏰ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+
     signal = calc_signal()
     if signal is None:
-        log.error("시그널 계산 실패, 리밸런싱 중단"); return
+        log.error("시그널 계산 실패, 리밸런싱 중단")
+        tg("❌ <b>시그널 계산 실패</b> — 리밸런싱 중단")
+        return
 
     balance = get_balance()
     log.info(f"\n💰 잔고: ${balance:,.2f} (전액 사용)")
     if balance < 10:
-        log.error("잔고 부족"); return
+        log.error("잔고 부족")
+        tg(f"❌ <b>잔고 부족</b>: ${balance:,.2f}")
+        return
 
     prices = get_prices()
     info = get_exchange_info()
@@ -553,6 +573,32 @@ def rebalance():
     })
     log.info("=" * 60)
 
+    # ── 텔레그램 리밸런싱 리포트 ──
+    lines = [
+        f"✅ <b>[봇 v5] 리밸런싱 완료</b>",
+        f"⏰ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+        f"",
+        f"💰 잔고: ${balance:,.0f} | 주문: {orders}건",
+        f"",
+        f"📊 <b>포지션</b>",
+    ]
+    for sym in SYMBOLS:
+        amt = final_pos.get(sym, 0.0)
+        if amt == 0: continue
+        val = amt * prices.get(sym, 0)
+        d = "🟢" if amt > 0 else "🔴"
+        lines.append(f"  {d} {NAMES[sym]:>5}: ${abs(val):,.0f} ({signal.get(sym,0):+.1%})")
+    lines += [
+        f"",
+        f"━━━━━━━━━━━━━━━━━━━━",
+        f"  롱: ${total_long:,.0f} / 숏: ${total_short:,.0f}",
+        f"  넷: ${net_final:,.0f} ({net_pct:.1f}%)",
+        f"  그로스: ${gross_final:,.0f} (시드 {gross_final/balance*100:.0f}%)" if balance > 0 else "",
+        f"",
+        f"⏭ 다음 리밸런싱: {REBAL_DAYS}일 후",
+    ]
+    tg('\n'.join(lines))
+
 # ═══════════════════════════════════════
 #  유틸리티
 # ═══════════════════════════════════════
@@ -605,14 +651,16 @@ def signal_only():
 
 def close_all():
     log.info("🛑 전체 청산 시작")
+    tg("🛑 <b>[봇 v5] 전체 청산 시작</b>")
     info = get_exchange_info(); pos = get_positions()
-    if not pos: log.info("포지션 없음"); return
+    if not pos: log.info("포지션 없음"); tg("📭 포지션 없음"); return
     for sym, amt in pos.items():
         if sym not in info: continue
         place_order(sym, 'SELL' if amt > 0 else 'BUY', abs(amt), info)
         time.sleep(0.2)
     save_state({'last_rebal': datetime.now(timezone.utc).isoformat(), 'action': 'close_all'})
     log.info("✅ 청산 완료")
+    tg("✅ <b>[봇 v5] 전체 청산 완료</b>")
 
 def auto_run():
     INTERVAL = REBAL_DAYS * 24 * 3600
@@ -621,8 +669,16 @@ def auto_run():
     log.info(f"   리밸런싱: {REBAL_DAYS}일마다 / 레버리지: {LEVERAGE}x")
     log.info("   종료: Ctrl+C")
     log.info("=" * 60)
+    tg(f"🤖 <b>[봇 v5] 자동매매 시작</b>\n\n"
+       f"📐 전략 #1 (Gen 5440, OOS 1.87)\n"
+       f"📅 리밸런싱: {REBAL_DAYS}일마다\n"
+       f"⚖️ 넷 익스포저 = 0 / 풀 시드\n"
+       f"🏦 레버리지: {LEVERAGE}x\n\n"
+       f"Ctrl+C로 종료")
     try: rebalance()
-    except Exception as e: log.error(f"첫 리밸런싱 실패: {e}")
+    except Exception as e:
+        log.error(f"첫 리밸런싱 실패: {e}")
+        tg(f"❌ <b>첫 리밸런싱 실패</b>\n{e}")
     while True:
         try:
             next_time = datetime.now(timezone.utc) + timedelta(days=REBAL_DAYS)
@@ -631,9 +687,13 @@ def auto_run():
             log.info(f"\n[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}] 리밸런싱 실행")
             rebalance()
         except KeyboardInterrupt:
-            log.info("\n🛑 자동 실행 종료"); break
+            log.info("\n🛑 자동 실행 종료")
+            tg("🛑 <b>[봇 v5] 자동매매 종료</b>")
+            break
         except Exception as e:
-            log.error(f"에러: {e}"); log.info("120초 후 재시도..."); time.sleep(120)
+            log.error(f"에러: {e}"); log.info("120초 후 재시도...")
+            tg(f"⚠️ <b>[봇 v5] 에러 발생</b>\n{e}\n120초 후 재시도")
+            time.sleep(120)
 
 if __name__ == '__main__':
     cmd = sys.argv[1] if len(sys.argv) > 1 else 'auto'
