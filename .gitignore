@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+*.log
+bot_v5_state.json
+bot_v4_state.json
+*.html
+.DS_Store
